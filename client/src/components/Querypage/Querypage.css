@@ -1,0 +1,178 @@
+:root {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f4f6f9;
+    --text-primary: #1a2b3c;
+    --text-secondary: #4a5568;
+    --accent-primary: #96bff2;
+    --accent-secondary: #3182ce;
+    --border-color: #e2e8f0;
+    --shadow-color: rgba(0, 0, 0, 0.1);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent-secondary) transparent;
+}
+
+body {
+    font-family: 'Inter', 'system-ui', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: var(--bg-secondary);
+    line-height: 1.6;
+    color: var(--text-primary);
+}
+
+.chat-container {
+    max-width: 700px;
+    margin: 2rem auto;
+    height: calc(100vh - 4rem);
+    display: flex;
+    flex-direction: column;
+    background-color: var(--bg-primary);
+    border-radius: 12px;
+    box-shadow: 0 10px 25px var(--shadow-color);
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+}
+.chat-header {
+    display: flex;
+    align-items: center;
+    min-height: 130px;
+    justify-content: center; /* Center the content */
+    background-color: var(--accent-primary);
+    color: white;
+    padding: 1rem 1.5rem;
+    position: relative; /* For absolute positioning of logo */
+  }
+  
+  .chat-logo-container {
+    position: absolute;
+    left: 1.5rem; /* Align logo to the left with padding */
+    display: flex;
+    align-items: center;
+  }
+  
+  .chat-logo {
+    max-height: 140px;
+    max-width: 120px;
+    object-fit: contain;
+  }
+  
+  .chat-header h1 {
+    font-size: 1.125rem;
+    color: white;
+    text-align: center;
+    margin: 0; /* Remove any default margin */
+  }
+
+.chat-messages {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    background-color: var(--bg-secondary);
+}
+
+.message {
+    max-width: 85%;
+    width: fit-content;
+    padding: 0.75rem 1rem;
+    border-radius: 12px;
+    line-height: 1.5;
+    clear: both;
+    position: relative;
+    font-size: 0.95rem;
+    box-shadow: 0 2px 5px var(--shadow-color);
+}
+
+.message.user {
+    background-color: var(--accent-secondary);
+    color: white;
+    align-self: flex-end;
+    margin-left: auto;
+    border-bottom-right-radius: 4px;
+}
+
+.message.bot {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    align-self: flex-start;
+    border-bottom-left-radius: 4px;
+}
+
+.message.error {
+    background-color: #fed7d7;
+    color: #9b2c2c;
+    border: 1px solid #feb2b2;
+}
+
+.message.loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: var(--bg-primary);
+}
+
+.loading-icon {
+    animation: spin 1s linear infinite;
+    color: var(--accent-secondary);
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.chat-input-form {
+    display: flex;
+    padding: 1rem 1.5rem;
+    background-color: var(--bg-primary);
+    border-top: 1px solid var(--border-color);
+}
+
+.chat-input {
+    flex-grow: 1;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 0.95rem;
+    margin-right: 1rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.chat-input:focus {
+    outline: none;
+    border-color: var(--accent-secondary);
+    box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.1);
+}
+
+.chat-submit-btn {
+    background-color: var(--accent-secondary);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
+}
+
+.chat-submit-btn:hover {
+    background-color: var(--accent-primary);
+}
+
+.chat-submit-btn:active {
+    transform: scale(0.95);
+}
+
+.chat-submit-btn:disabled {
+    background-color: #a0aec0;
+    cursor: not-allowed;
+    transform: none;
+}
