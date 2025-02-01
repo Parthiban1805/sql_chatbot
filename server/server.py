@@ -4,14 +4,29 @@ import logging
 import  bcrypt
 import google.generativeai as genai
 import psycopg2
-from flask import Flask, request, jsonify
+import jwt
+
+from flask import Flask, request, jsonify, session
 from flask_cors import CORS
+from dotenv import load_dotenv
+import datetime
 
-# Configure logging
+app = Flask(__name__)
+
+load_dotenv()
 logging.basicConfig(level=logging.DEBUG)
+JWT_SECRET = os.getenv("JWT_SECRET")
+FLASK_SECRET = os.getenv("FLASK_SECRET")
 
-# Import configuration from original script
-GEMINI_API_KEY = "AIzaSyAnMlXs16_Otj7LrYboVUxrtSzehYslpf8"
+app.secret_key = FLASK_SECRET  # Set Flask secret key
+JWT_ALGORITHM = "HS256"
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+DB_NAME = os.getenv("DB_NAME")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_HOST = os.getenv("DB_HOST")
+DB_PORT = os.getenv("DB_PORT")
 genai.configure(api_key=GEMINI_API_KEY)
 
 generation_config = {
@@ -37,11 +52,11 @@ def start_chat_session():
 def connect_to_db():
     try:
         conn = psycopg2.connect(
-            dbname="students",
-            user="postgres",
-            password="parthi",
-            host="localhost",
-            port="5432"
+            dbname=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            host=DB_HOST,
+            port=DB_PORT
         )
         return conn
     except Exception as e:
@@ -92,15 +107,39 @@ def generate_natural_language_response(user_query, db_results):
         
         # Define the prompt
         prompt = f"""
-        You are a chatbot that interprets SQL query results and provides natural language responses.
-        The user has asked a question, and the database has returned some results.
-        Your task is to generate a natural language summary of the results based on the user's query.
 
-        Now do the same for the following:
-        User Query: "{user_query}"
-        SQL Query Result: "{result_string}"
+You are a chatbot that interprets SQL query results and provides natural language responses.
+            The user has asked a question, and the database has returned some results.
+            Your task is to generate a natural language summary of the results based on the user's query.
+
+            Format the SQL query results as follows:
+            - If there is more than two result, present the result on multiple lines.
+            - For example:
+            the students who scored above fifty marks are
+                1.parthiban
+                2.logith
+                3.kumar
+            - If there is only one result,like details about one particular student, present the result as usual
+            but if there is results about multiple students, present the details about one student and in a new line 
+            give the details about the next student.
+            -if the user's expects one result in the query and the result is not available or more than result are given than 
+            the user expected,then understand thee users query and find out what he wants ,instead of  dumping him all the results
+            tell him the reason for not finding the results or getting more result shortly and then in the next line 
+            tell the user how to give the query to get the result he wants.
+            -if the user's the users query is to get the details of one student but the result contains the details of two or more students then 
+            you should give the name of the first a student in the new line  and his image url in the new line and then in the next line give the name of the second student in the new line and his image url in the new line
+            and so on and ask the user which student he wants to know the details of.            
+            
+
+            User Query: "{user_query}"
+            SQL Query Results:
+            {result_string}
+
+            Now summarize the results for the user in natural language:
+"""
+
         
-        """
+    
         
         
         # Generate the response
@@ -112,8 +151,8 @@ def generate_natural_language_response(user_query, db_results):
         logging.error(f"Error generating natural language response: {str(e)}")
         return f"Error generating natural language response: {str(e)}"
 
-app = Flask(__name__)
 CORS(app)
+
 @app.route('/login', methods=['POST'])
 def login():
     try:
@@ -126,16 +165,27 @@ def login():
             return jsonify({"error": "Failed to connect to the database"}), 500
 
         cursor = conn.cursor()
-        cursor.execute("SELECT password FROM users WHERE email = %s;", (email,))
+        cursor.execute("SELECT id, password, role FROM users WHERE email = %s;", (email,))
         result = cursor.fetchone()
 
-        if result and bcrypt.checkpw(password.encode('utf-8'), result[0].encode('utf-8')):
-            return jsonify({"message": "Login successful"}), 200
+        if result and bcrypt.checkpw(password.encode('utf-8'), result[1].encode('utf-8')):
+            user_id, _, role = result  # Extract user ID and role
+
+            # Create JWT token
+            payload = {
+                "id": user_id,
+                "email": email,
+                "role": role,
+                "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=2)  # Token expiry time
+            }
+            token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+            return jsonify({"message": "Login successful", "token": token}), 200
         else:
             return jsonify({"error": "Invalid email or password"}), 401
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 @app.route('/query', methods=['POST'])
 def generate_query():
     try:
@@ -145,32 +195,44 @@ def generate_query():
         # Predefined prompt
         prompt = """
         You are a chatbot connected to a student database. Your job is to understand user queries and generate appropriate SQL commands to manage the data.
-        You should interpret user input accurately, identify the type of operation (e.g., SELECT, INSERT, UPDATE, DELETE, ALTER), and generate the correct SQL query.
+        You should interpret user input acurately especially while it come to deleting records, identify the type of operation (e.g., SELECT, INSERT, UPDATE, DELETE, ALTER), and generate the correct SQL query.
         Provide clear, concise, and respectful feedback for unsupported or invalid queries.
         Ensure that the queries align with the structure and purpose of the database, and guide the user on how to phrase their requests if needed.
         students table:
+        - id(TEXT)
         - roll_no (TEXT)
         - name (TEXT)
         - dept (TEXT)
         - mailid (TEXT)
-        - year (INTEGER)
-        - speciallab (TEXT)
+        - sem(TEXT)
+        - images(TEXT)
         subjects table:
         - id (INTEGER, Primary Key)
+        - exam_name(TEXT)
+        - course_code(TEXT)
         - student_id (INTEGER, Foreign Key referencing students.id)
         - subject_name (TEXT)
-        - marks (INTEGER)
+        - total_mark (INTEGER)
+        
+        the example of the students table record is this
+        example:
+        
+        7376231CS229	MONISHADHITH B S	CSE	22CS303	COMPUTER ORGANIZATION AND ARCHITECTURE	Periodical Test - I	S3	29	monishadhith.cs23@bitsathy.ac.in
+        thses are some examples of the student's roll_no name dept course_code subject_name exam_name sem total_mark mailid	
+        and these are the departments CSE ECE EIE(which means Electronics and Instrumentation Engineering) MECH(which means mechanics) 
+        CIVIL MTRS(which means mechatronics ) CSBS(which means computer science and bussiness system) IT AGRI ISE(which means information science and engineering)
+        here some of the details are in upper case and some are in lower case but when the user gives the query you should give query in relevant case
         Examples:
             1. User: Give me the details about the student Parthiban.
-            SQL: SELECT * FROM students WHERE name = 'Parthiban';
+            SQL: SELECT * FROM students WHERE name LIKE 'PARTHIBAN%';
             2. User: Show all students in the Computer Science department.
-            SQL: SELECT * FROM students WHERE dept = 'Computer Science';
+            SQL: SELECT * FROM students WHERE dept = 'COMPUTER SCIENCE';
             3. User: List students in their final year.
             SQL: SELECT * FROM students WHERE year = 4;
-            4. User: Add a student named Parthiban in 2nd year with roll number 7376231CD124 to the database.
-            SQL: INSERT INTO students (roll_no, name, dept, mailid, year, speciallab) VALUES ('7376231CD124', 'Parthiban', 'Computer Science', 'parthiban@example.com', 2, NULL);
+            4. User: Add a student named Parthiban in 2nd year with roll number 7376231CD124 and computer science and engineering dept  to the database.
+            SQL: INSERT INTO students (roll_no, name, dept, mailid, year, speciallab) VALUES ('7376231CD124', 'PARTHIBAN', 'CSE', 'parthiban@example.com', 2, NULL);
             5. User: Update the department of the student with roll number 7376231CD124 to Mechanical Engineering.
-            SQL: UPDATE students SET dept = 'Mechanical Engineering' WHERE roll_no = '7376231CD124';
+            SQL: UPDATE students SET dept = 'MECH' WHERE roll_no = '7376231CD124';
             6. User: Delete the student with roll number 7376231CD124 from the database.
             SQL: DELETE FROM students WHERE roll_no = '7376231CD124';
             7. User: Alter the table to add a new column named "GPA" with type REAL.
@@ -179,19 +241,19 @@ def generate_query():
             SQL: SELECT s.marks 
                 FROM subjects s 
                 JOIN students st ON s.student_id = st.id 
-                WHERE st.name = 'Parthiban';
+                WHERE st.name = 'PARTHIBAN';
 
             9. User:Physics mark of student Parthiban.
             SQL: SELECT s.marks 
                     FROM subjects s 
                     JOIN students st ON s.student_id = st.id 
-                    WHERE st.name = 'Parthiban' AND s.subject_name = 'Physics';
+                    WHERE st.name = 'PARTHIBAN' AND s.subject_name = 'PHYSICS';
 
             10. User: Calculate the sum and average marks of Parthiban.
             SQL: SELECT SUM(s.marks) AS total_marks, AVG(s.marks) AS average_marks 
                     FROM subjects s 
                     JOIN students st ON s.student_id = st.id 
-                    WHERE st.name = 'Parthiban';
+                    WHERE st.name = 'PARTHIBAN';
         Always use single quotes for string values in SQL queries.
 
         """

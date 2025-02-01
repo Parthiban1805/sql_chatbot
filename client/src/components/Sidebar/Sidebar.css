@@ -1,0 +1,91 @@
+.sidebar {
+    width: 60px;
+    height: 100vh;
+    background-color:#212327;
+    color: white;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px;
+    position: fixed;
+    left: 0;
+    top: 0;
+    transition: width 0.3s ease;
+  }
+  
+  .sidebar.expanded {
+    width: 250px;
+    align-items: flex-start;
+    padding: 20px;
+  }
+  
+  .toggle-btn {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    margin-bottom: 10px;
+  }
+  
+  .new-chat-btn,
+  .get-app-btn,
+  .profile {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    color: white;
+    border: none;
+    padding: 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    width: 100%;
+    transition: background 0.3s;
+  }
+  
+  .new-chat-btn:hover,
+  .get-app-btn:hover,
+  .profile:hover {
+    background-color: #2a2a2a;
+  }
+  
+  .new-chat-btn span,
+  .get-app-btn span,
+  .profile span {
+    display: none;
+    transition: opacity 0.3s ease-in-out;
+  }
+  
+  .sidebar.expanded .new-chat-btn span,
+  .sidebar.expanded .get-app-btn span,
+  .sidebar.expanded .profile span {
+    display: inline;
+  }
+  
+  .chat-history {
+    flex-grow: 1;
+    width: 100%;
+    margin-top: 20px;
+  }
+  
+  .chat-item {
+    padding: 8px 12px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.3s;
+  }
+  
+  .chat-item:hover {
+    background-color: #2a2a2a;
+  }
+  
+  .sidebar-footer {
+    width: 100%;
+  }
+  
+  .new-badge {
+    color: #4c6ef5;
+    font-size: 12px;
+    margin-left: 5px;
+  }
+  

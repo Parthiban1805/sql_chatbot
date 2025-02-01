@@ -1,0 +1,12 @@
+/* App.css or global styles */
+.app-container {
+    display: flex;
+    height: 100vh;
+  }
+  
+  .main-content {
+    flex-grow: 1;
+    margin-left: 250px; /* Offset for the sidebar */
+    overflow-y: auto;
+    height: 100vh;
+  }

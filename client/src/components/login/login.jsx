@@ -17,14 +17,14 @@ function LoginPage() {
     setLoading(true);
 
     try {
-      const response = await axios.post('http://localhost:3001/login', {
-        email,
-        password,
-      });
+      const response = await axios.post('http://localhost:3001/login', { email, password });
 
       if (response.status === 200) {
+        const { token } = response.data;  
+        console.log(token)// Assume the backend sends a JWT token
+        localStorage.setItem('authToken', token); // Store token
         alert('Login successful');
-        navigate('/queryPage'); // Navigate to the QueryPage
+        navigate('/queryPage'); // Redirect
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Login failed. Please try again.');
