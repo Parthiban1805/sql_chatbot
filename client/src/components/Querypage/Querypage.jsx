@@ -4,15 +4,66 @@ import { Send, RefreshCw } from 'lucide-react';
 import './Querypage.css';
 import src from '../../assets/image.png';
 import Sidebar from '../Sidebar/Sidebar';
+import { jwtDecode } from 'jwt-decode';
 
 function StudentQueryApp() {
+  const [user, setUser] = useState(null);
+  const [token,setToken]=useState(null)
   const [query, setQuery] = useState('');
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [firstPrompt, setFirstPrompt] = useState(true);
   const messagesEndRef = useRef(null);
+  useEffect(() => {
+    const storedToken = localStorage.getItem('authToken');
+    if (storedToken) {
+      try {
+        const decoded = jwtDecode(storedToken);
+        setUser(decoded);
+        setToken(storedToken); // Update token state
+        fetchChatHistory();
+      } catch (error) {
+        console.error('Invalid token:', error);
+        localStorage.removeItem('token');
+      }
+    }
+  }, []);
 
+  useEffect(() => {
+    const storedMessages = JSON.parse(localStorage.getItem('chatHistory')) || [];
+    setMessages(storedMessages);  // Load chat history from localStorage
+  }, []);
+
+  const fetchChatHistory = async () => {
+    const freshToken = localStorage.getItem('authToken');
+    if (!freshToken) {
+      return;
+    }
+    
+    try {
+      const response = await axios.get("http://localhost:3001/chat-history", {
+        headers: { Authorization: `Bearer ${freshToken}` },
+      });
+
+      // Check if chat history exists in the response
+      if (response.data.chat_history) {
+        const chatHistory = response.data.chat_history;
+        
+        // Update the state with chat history from the database
+        setMessages(chatHistory.map(msg => ({
+          type: msg.user_message ? 'user' : 'bot',
+          content: msg.user_message || msg.bot_response,
+        })));
+      }
+    } catch (error) {
+      console.error("Error fetching chat history:", error);
+      if (error.response?.status === 401) {
+        localStorage.removeItem('authToken');
+      }
+    }
+  };
+  
   const extractImageUrls = (text) => {
     const regex = /(https?:\/\/[^\s]+(\.jpg|\.jpeg|\.png|\.gif))/g;
     const matches = [];
@@ -75,15 +126,44 @@ function StudentQueryApp() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!query.trim()) return;
+  
+    const freshToken = localStorage.getItem('authToken');
+    console.log("Fresh",freshToken)
+    if (!freshToken) {
+      setMessages((prev) => [
+        ...prev, 
+        { type: 'error', content: 'Please login to continue' }
+      ]);
+      return;
+    }
+    const newUserMessage = { type: 'user', content: query };
 
-    setMessages((prev) => [...prev, { type: 'user', content: query }]);
+    // Update messages state with user query and store it in localStorage
+    const updatedMessages = [...messages, newUserMessage];
+    setMessages(updatedMessages);
+    localStorage.setItem('chatHistory', JSON.stringify(updatedMessages));  // Save chat history in localStorage
     setQuery('');
     setLoading(true);
     setFirstPrompt(false);
 
+    
+
     try {
-      const response = await axios.post('http://localhost:3001/query', { query });
+      const response = await axios.post(
+        'http://localhost:3001/query',
+        { query },
+        { headers: { Authorization: `Bearer ${freshToken}` } } // Use freshToken here
+      );
+      
+
       const { natural_language_response } = response.data;
+      const newBotMessage = { type: 'bot', content: natural_language_response || 'No results found' };
+
+      // Add bot message to state and update localStorage
+      const updatedMessagesWithBot = [...updatedMessages, newBotMessage];
+      setMessages(updatedMessagesWithBot);
+      localStorage.setItem('chatHistory', JSON.stringify(updatedMessagesWithBot));  // Save updated chat history in localStorage
+
       setMessages((prev) => [
         ...prev,
         { type: 'bot', content: natural_language_response || 'No results found' }
@@ -96,7 +176,7 @@ function StudentQueryApp() {
     } finally {
       setLoading(false);
     }
-  };
+};
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

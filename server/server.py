@@ -4,22 +4,12 @@ import logging
 import  bcrypt
 import google.generativeai as genai
 import psycopg2
-import jwt
-
-from flask import Flask, request, jsonify, session
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
-import datetime
-
-app = Flask(__name__)
 
 load_dotenv()
 logging.basicConfig(level=logging.DEBUG)
-JWT_SECRET = os.getenv("JWT_SECRET")
-FLASK_SECRET = os.getenv("FLASK_SECRET")
-
-app.secret_key = FLASK_SECRET  # Set Flask secret key
-JWT_ALGORITHM = "HS256"
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 DB_NAME = os.getenv("DB_NAME")
@@ -108,7 +98,7 @@ def generate_natural_language_response(user_query, db_results):
         # Define the prompt
         prompt = f"""
 
-You are a chatbot that interprets SQL query results and provides natural language responses.
+            You are a chatbot that interprets SQL query results and provides natural language responses.
             The user has asked a question, and the database has returned some results.
             Your task is to generate a natural language summary of the results based on the user's query.
 
@@ -126,9 +116,7 @@ You are a chatbot that interprets SQL query results and provides natural languag
             the user expected,then understand thee users query and find out what he wants ,instead of  dumping him all the results
             tell him the reason for not finding the results or getting more result shortly and then in the next line 
             tell the user how to give the query to get the result he wants.
-            -if the user's the users query is to get the details of one student but the result contains the details of two or more students then 
-            you should give the name of the first a student in the new line  and his image url in the new line and then in the next line give the name of the second student in the new line and his image url in the new line
-            and so on and ask the user which student he wants to know the details of.            
+            
             
 
             User Query: "{user_query}"
@@ -151,8 +139,8 @@ You are a chatbot that interprets SQL query results and provides natural languag
         logging.error(f"Error generating natural language response: {str(e)}")
         return f"Error generating natural language response: {str(e)}"
 
+app = Flask(__name__)
 CORS(app)
-
 @app.route('/login', methods=['POST'])
 def login():
     try:
@@ -165,27 +153,16 @@ def login():
             return jsonify({"error": "Failed to connect to the database"}), 500
 
         cursor = conn.cursor()
-        cursor.execute("SELECT id, password, role FROM users WHERE email = %s;", (email,))
+        cursor.execute("SELECT password FROM users WHERE email = %s;", (email,))
         result = cursor.fetchone()
 
-        if result and bcrypt.checkpw(password.encode('utf-8'), result[1].encode('utf-8')):
-            user_id, _, role = result  # Extract user ID and role
-
-            # Create JWT token
-            payload = {
-                "id": user_id,
-                "email": email,
-                "role": role,
-                "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=2)  # Token expiry time
-            }
-            token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-
-            return jsonify({"message": "Login successful", "token": token}), 200
+        if result and bcrypt.checkpw(password.encode('utf-8'), result[0].encode('utf-8')):
+            return jsonify({"message": "Login successful"}), 200
         else:
             return jsonify({"error": "Invalid email or password"}), 401
-
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 @app.route('/query', methods=['POST'])
 def generate_query():
     try:
@@ -205,7 +182,6 @@ def generate_query():
         - dept (TEXT)
         - mailid (TEXT)
         - sem(TEXT)
-        - images(TEXT)
         subjects table:
         - id (INTEGER, Primary Key)
         - exam_name(TEXT)
@@ -213,26 +189,105 @@ def generate_query():
         - student_id (INTEGER, Foreign Key referencing students.id)
         - subject_name (TEXT)
         - total_mark (INTEGER)
-        
-        the example of the students table record is this
-        example:
-        
-        7376231CS229	MONISHADHITH B S	CSE	22CS303	COMPUTER ORGANIZATION AND ARCHITECTURE	Periodical Test - I	S3	29	monishadhith.cs23@bitsathy.ac.in
-        thses are some examples of the student's roll_no name dept course_code subject_name exam_name sem total_mark mailid	
-        and these are the departments CSE ECE EIE(which means Electronics and Instrumentation Engineering) MECH(which means mechanics) 
-        CIVIL MTRS(which means mechatronics ) CSBS(which means computer science and bussiness system) IT AGRI ISE(which means information science and engineering)
-        here some of the details are in upper case and some are in lower case but when the user gives the query you should give query in relevant case
+        Here is a list of subjects and their short forma in the brackets:
+
+- COMPUTER ORGANIZATION AND ARCHITECTURE (COA)
+- HUMAN VALUES AND ETHICS
+- PROBABILITY, STATISTICS AND QUEUING THEORY 
+- PRINCIPLES OF PROGRAMMING LANGUAGES (ppl)
+- DATA STRUCTURES I (DS)
+- SOFTWARE ENGINEERING (SE)
+- TRANSFORMS AND PARTIAL DIFFERENTIAL EQUATIONS
+- FLUID MECHANICS AND THERMODYNAMICS
+- ELECTRICAL CIRCUITS AND MACHINES
+- DATA STRUCTURES AND ALGORITHMS (DSA)
+- DIGITAL LOGIC CIRCUIT DESIGN
+- PROBABILITY AND STATISTICS
+- ENGINEERING THERMODYNAMICS
+- FLUID MECHANICS AND MACHINERY
+- SOIL SCIENCE AND ENGINEERING
+- SURVEYING AND LEVELLING
+- NUMERICAL METHODS AND STATISTICS
+- FREE OPEN SOURCE SOFTWARE
+- COMPUTER NETWORKS
+- INTERNATIONAL BUSINESS MANAGEMENT
+- THEORY OF COMPUTATION
+- MACHINE LEARNING ESSENTIALS (MLE)
+- KNOWLEDGE ENGINEERING
+- DIGITAL COMMUNICATION
+- DIGITAL SIGNAL PROCESSING
+- TRANSMISSION LINES AND ANTENNAS
+- INTERNET OF THINGS AND ITS APPLICATIONS 
+- REAL-TIME OPERATING SYSTEMS (OS)
+- SOCIAL TEXT AND MEDIA ANALYTICS
+- VIRTUAL INSTRUMENTATION IN EMBEDDED SYSTEMS
+- OBJECT ORIENTED PROGRAMMING
+- ANALYTICAL INSTRUMENTS
+- INTERNET OF THINGS (IOT)
+- CONTROL SYSTEMS
+- INDUSTRIAL PROCESS ENGINEERING
+- IOT PROTOCOLS AND INDUSTRIAL SENSORS
+- ELECTRONIC INSTRUMENTATION AND MEASUREMENTS
+- INDUSTRIAL INSTRUMENTATION
+- SMART SENSORS
+- THERMODYNAMICS AND HEAT TRANSFER
+- ROBOTICS AND MACHINE VISION
+- ENERGY CONSERVATION AND MANAGEMENT
+- INDUSTRIAL ENGINEERING
+- CONTROL SYSTEMS ENGINEERING
+- MANUFACTURING TECHNOLOGY
+- AUTOMOTIVE INFOTRONICS
+- ENTREPRENEURSHIP DEVELOPMENT I
+- MACHINING AND METROLOGY
+- DESIGN OF MACHINE ELEMENTS
+- THERMAL ENGINEERING
+- WELDING TECHNOLOGY
+- MECHATRONICS
+- BIGDATA TECHNOLOGIES
+- DIGITAL IMAGE PROCESSING
+- OPEN SOURCE SOFTWARE
+- MACHINE LEARNING
+- CLOUD COMPUTING
+- TIME SERIES ANALYSIS AND FORECASTING
+- ARTIFICIAL INTELLIGENCE
+- FINANCIAL AND COST ACCOUNTING
+- BUSINESS STRATEGY
+- SOFTWARE DESIGN WITH UML
+- CLOUD, MICRO SERVICES AND APPLICATIONS
+- COMPILER DESIGN
+- AGILE SOFTWARE DEVELOPMENT
+- INFORMATION CODING TECHNIQUES
+- PRINCIPLES OF COMMUNICATION
+- PRINCIPLES OF MANAGEMENT
+- INDUSTRIAL AUTOMATION
+- ADDITIVE MANUFACTURING
+- MICRO ELECTRO MECHANICAL SYSTEMS
+- DESIGN FOR MANUFACTURING AND ASSEMBLY
+- VIRTUAL INSTRUMENTATION
+- MEDICAL ROBOTICS
+- MOBILE ROBOTICS
+- SAFETY ENGINEERING (SFE)
+- DEVOPS
+- SOFTWARE TESTING
+- BUSINESS ANALYTICS
+- SECURITY AND PRIVACY IN CLOUD
+- TEXT AND SPEECH ANALYSIS
+ -every time the user gives a query which involves doing some operations related to a subject then read the available subject and then answer
+ -the user may not give the complete subject name,he can give the subject name as a short form but you have to analyse this and query properly,
+ -if the user give incompleted subject name and that name matches with two or more subject name then analyse the subjects and give the most approprate one
+ as the query
+
         Examples:
             1. User: Give me the details about the student Parthiban.
-            SQL: SELECT * FROM students WHERE name LIKE 'PARTHIBAN%';
+            SQL: SELECT * FROM students WHERE name LIKE 'Parthiban%';
             2. User: Show all students in the Computer Science department.
-            SQL: SELECT * FROM students WHERE dept = 'COMPUTER SCIENCE';
+            SQL: SELECT * FROM students WHERE dept = 'Computer Science';
             3. User: List students in their final year.
             SQL: SELECT * FROM students WHERE year = 4;
-            4. User: Add a student named Parthiban in 2nd year with roll number 7376231CD124 and computer science and engineering dept  to the database.
-            SQL: INSERT INTO students (roll_no, name, dept, mailid, year, speciallab) VALUES ('7376231CD124', 'PARTHIBAN', 'CSE', 'parthiban@example.com', 2, NULL);
+            4. User: Add a student named Parthiban in 2nd year with roll number 7376231CD124 to the database.
+            SQL: INSERT INTO students (roll_no, name, dept, mailid, year, speciallab) VALUES ('7376231CD124', 'Parthiban', 'Computer Science', 'parthiban@example.com', 2, NULL);
             5. User: Update the department of the student with roll number 7376231CD124 to Mechanical Engineering.
-            SQL: UPDATE students SET dept = 'MECH' WHERE roll_no = '7376231CD124';
+            SQL: UPDATE students SET dept = 'Mechanical Engineering' WHERE roll_no = '7376231CD124';
             6. User: Delete the student with roll number 7376231CD124 from the database.
             SQL: DELETE FROM students WHERE roll_no = '7376231CD124';
             7. User: Alter the table to add a new column named "GPA" with type REAL.
@@ -241,20 +296,61 @@ def generate_query():
             SQL: SELECT s.marks 
                 FROM subjects s 
                 JOIN students st ON s.student_id = st.id 
-                WHERE st.name = 'PARTHIBAN';
+                WHERE st.name = 'Parthiban';
 
             9. User:Physics mark of student Parthiban.
             SQL: SELECT s.marks 
                     FROM subjects s 
                     JOIN students st ON s.student_id = st.id 
-                    WHERE st.name = 'PARTHIBAN' AND s.subject_name = 'PHYSICS';
+                    WHERE st.name = 'Parthiban' AND s.subject_name = 'Physics';
 
             10. User: Calculate the sum and average marks of Parthiban.
             SQL: SELECT SUM(s.marks) AS total_marks, AVG(s.marks) AS average_marks 
                     FROM subjects s 
                     JOIN students st ON s.student_id = st.id 
-                    WHERE st.name = 'PARTHIBAN';
+                    WHERE st.name = 'Parthiban';
         Always use single quotes for string values in SQL queries.
+
+        example based on subjects:
+
+
+Examples for Handling Subject-Based Queries with Short Forms:
+
+1. User: Who scored highest in DSA?
+   SQL Query:
+   SELECT st.name, s.total_mark 
+   FROM subjects s 
+   JOIN students st ON s.student_id = st.id 
+   WHERE s.subject_name LIKE 'DATA STRUCTURES AND ALGORITHMS' 
+   ORDER BY s.total_mark DESC 
+   LIMIT 1;
+
+2. User: Show students who scored above 80 in COA.
+   SQL Query:
+   SELECT st.name, s.total_mark 
+   FROM subjects s 
+   JOIN students st ON s.student_id = st.id 
+   WHERE s.subject_name LIKE 'COMPUTER ORGANIZATION AND ARCHITECTURE%' 
+   AND s.total_mark > 80;
+
+3. User: Give me students who passed SE.
+   SQL Query:
+   SELECT st.name, s.total_mark 
+   FROM subjects s 
+   JOIN students st ON s.student_id = st.id 
+   WHERE s.subject_name LIKE 'Software Engineering%' 
+   AND s.total_mark >= 50;
+
+4. User: Who scored highest in DS?
+   SQL Query:
+   SELECT st.name, s.total_mark 
+   FROM subjects s 
+   JOIN students st ON s.student_id = st.id 
+   WHERE s.subject_name LIKE 'Data Structures I' 
+   ORDER BY s.total_mark DESC 
+   LIMIT 1;
+
+
 
         """
         
