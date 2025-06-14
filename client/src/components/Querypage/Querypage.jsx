@@ -1,5 +1,8 @@
+// File: src/pages/Querypage/Querypage.jsx (or StudentQueryApp.js)
+
 import React, { useState, useRef, useEffect } from 'react';
-import axios from 'axios';
+// REMOVE: import axios from 'axios';
+import apiClient from '../../api/axiosConfig'; // IMPORT THE NEW API CLIENT
 import { Send, RefreshCw } from 'lucide-react';
 import './Querypage.css';
 import src from '../../assets/image.png';
@@ -8,63 +11,115 @@ import { jwtDecode } from 'jwt-decode';
 
 function StudentQueryApp() {
   const [user, setUser] = useState(null);
-  const [token,setToken]=useState(null)
+  // REMOVE: const [token, setToken] = useState(null); // No longer needed here
   const [query, setQuery] = useState('');
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const [sidebarExpanded, setSidebarExpanded] = useState(true);
   const [firstPrompt, setFirstPrompt] = useState(true);
+
+  const [chatHistoryList, setChatHistoryList] = useState([]);
+  const [currentConversationId, setCurrentConversationId] = useState(null);
+
   const messagesEndRef = useRef(null);
+
   useEffect(() => {
     const storedToken = localStorage.getItem('authToken');
     if (storedToken) {
       try {
         const decoded = jwtDecode(storedToken);
         setUser(decoded);
-        setToken(storedToken); // Update token state
-        fetchChatHistory();
+        // The token is now handled by the axios interceptor,
+        // so we just need to trigger the fetch.
+        fetchConversationsList();
       } catch (error) {
         console.error('Invalid token:', error);
-        localStorage.removeItem('token');
+        localStorage.removeItem('authToken');
       }
     }
   }, []);
 
   useEffect(() => {
-    const storedMessages = JSON.parse(localStorage.getItem('chatHistory')) || [];
-    setMessages(storedMessages);  // Load chat history from localStorage
-  }, []);
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
-  const fetchChatHistory = async () => {
-    const freshToken = localStorage.getItem('authToken');
-    if (!freshToken) {
-      return;
-    }
-    
+  const fetchConversationsList = async () => {
     try {
-      const response = await axios.get("http://localhost:3001/chat-history", {
-        headers: { Authorization: `Bearer ${freshToken}` },
-      });
-
-      // Check if chat history exists in the response
-      if (response.data.chat_history) {
-        const chatHistory = response.data.chat_history;
-        
-        // Update the state with chat history from the database
-        setMessages(chatHistory.map(msg => ({
-          type: msg.user_message ? 'user' : 'bot',
-          content: msg.user_message || msg.bot_response,
-        })));
-      }
+      // No need to pass headers manually!
+      const response = await apiClient.get("/conversations");
+      setChatHistoryList(response.data || []);
     } catch (error) {
-      console.error("Error fetching chat history:", error);
-      if (error.response?.status === 401) {
-        localStorage.removeItem('authToken');
-      }
+      console.error("Error fetching chat history list:", error.message);
     }
   };
-  
-  const extractImageUrls = (text) => {
+
+  const handleSelectConversation = async (conversationId) => {
+    if (loading) return;
+    setLoading(true);
+    setMessages([]);
+    try {
+      // No need to pass headers manually!
+      const response = await apiClient.get(`/conversation/${conversationId}`);
+      setMessages(response.data);
+      setCurrentConversationId(conversationId);
+      setFirstPrompt(false);
+    } catch (error) {
+      console.error("Error fetching conversation:", error);
+      setMessages([{ type: 'error', content: 'Failed to load this chat.' }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleNewChat = () => {
+    setMessages([]);
+    setCurrentConversationId(null);
+    setFirstPrompt(true);
+    setQuery('');
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!query.trim() || loading) return;
+
+    // The interceptor checks for the token automatically
+    if (!localStorage.getItem('authToken')) {
+      setMessages((prev) => [...prev, { type: 'error', content: 'Authentication error. Please login again.' }]);
+      return;
+    }
+
+    const newUserMessage = { type: 'user', content: query };
+    setMessages((prev) => [...prev, newUserMessage]);
+    setQuery('');
+    setLoading(true);
+    setFirstPrompt(false);
+
+    try {
+      // No need to pass headers manually!
+      const response = await apiClient.post(
+        '/query',
+        { query, conversationId: currentConversationId }
+      );
+
+      const { natural_language_response, newConversation } = response.data;
+      const newBotMessage = { type: 'bot', content: natural_language_response || 'No results found' };
+      setMessages((prev) => [...prev, newBotMessage]);
+
+      if (newConversation && newConversation.id) {
+        setCurrentConversationId(newConversation.id);
+        setChatHistoryList((prev) => [newConversation, ...prev]);
+      }
+
+    } catch (err) {
+      const errorMessage = err.response?.data?.error || 'A server error occurred.';
+      setMessages((prev) => [...prev, { type: 'error', content: errorMessage }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ... (rest of your component, including parseContent, return statement, etc. remains the same)
+const extractImageUrls = (text) => {
     const regex = /(https?:\/\/[^\s]+(\.jpg|\.jpeg|\.png|\.gif))/g;
     const matches = [];
     let match;
@@ -123,76 +178,25 @@ function StudentQueryApp() {
     return elements;
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!query.trim()) return;
-  
-    const freshToken = localStorage.getItem('authToken');
-    console.log("Fresh",freshToken)
-    if (!freshToken) {
-      setMessages((prev) => [
-        ...prev, 
-        { type: 'error', content: 'Please login to continue' }
-      ]);
-      return;
-    }
-    const newUserMessage = { type: 'user', content: query };
-
-    // Update messages state with user query and store it in localStorage
-    const updatedMessages = [...messages, newUserMessage];
-    setMessages(updatedMessages);
-    localStorage.setItem('chatHistory', JSON.stringify(updatedMessages));  // Save chat history in localStorage
-    setQuery('');
-    setLoading(true);
-    setFirstPrompt(false);
-
-    
-
-    try {
-      const response = await axios.post(
-        'http://localhost:3001/query',
-        { query },
-        { headers: { Authorization: `Bearer ${freshToken}` } } // Use freshToken here
-      );
-      
-
-      const { natural_language_response } = response.data;
-      const newBotMessage = { type: 'bot', content: natural_language_response || 'No results found' };
-
-      // Add bot message to state and update localStorage
-      const updatedMessagesWithBot = [...updatedMessages, newBotMessage];
-      setMessages(updatedMessagesWithBot);
-      localStorage.setItem('chatHistory', JSON.stringify(updatedMessagesWithBot));  // Save updated chat history in localStorage
-
-      setMessages((prev) => [
-        ...prev,
-        { type: 'bot', content: natural_language_response || 'No results found' }
-      ]);
-    } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        { type: 'error', content: err.response?.data?.error || 'Server error occurred' }
-      ]);
-    } finally {
-      setLoading(false);
-    }
-};
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
   return (
     <div className="app-container">
-      <Sidebar onToggle={setSidebarExpanded} />
+      <Sidebar 
+        onToggle={setSidebarExpanded} 
+        history={chatHistoryList}
+        onSelectHistory={handleSelectConversation}
+        onNewChat={handleNewChat}
+        activeConversationId={currentConversationId}
+      />
       
       <div className={`chat-gpt-container ${sidebarExpanded ? 'sidebar-expanded' : 'sidebar-collapsed'}`}>
+        {/* ... The rest of your JSX remains the same ... */}
+        {/* Chat Header */}
         <div className="chat-header">
           <img src={src} className="chat-logo" alt="Logo" />
           <h1>BIT Chatbot</h1>
         </div>
-
-        <div className="chat-messages">
+        {/* Chat Messages */}
+                <div className="chat-messages">
           {messages.map((msg, index) => (
             <div key={index} className={`message ${msg.type}`}>
               <div className="message-content">
@@ -220,25 +224,25 @@ function StudentQueryApp() {
               </div>
             </div>
           ))}
-          {loading && (
-            <div className="message bot loading">
-              <RefreshCw className="loading-icon" />
-            </div>
-          )}
-          <div ref={messagesEndRef} />
+            {loading && (
+                <div className="message bot loading">
+                    <RefreshCw className="loading-icon" />
+                </div>
+            )}
+            <div ref={messagesEndRef} />
         </div>
-
+        {/* Chat Input Form */}
         <form onSubmit={handleSubmit} className={`chat-input-form ${firstPrompt ? 'centered' : 'bottom'}`}>
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Enter your database query"
-            className="chat-input"
-          />
-          <button type="submit" disabled={loading} className="chat-submit-btn">
-            <Send size={20} />
-          </button>
+            <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Enter your database query"
+                className="chat-input"
+            />
+            <button type="submit" disabled={loading} className="chat-submit-btn">
+                <Send size={20} />
+            </button>
         </form>
       </div>
     </div>
