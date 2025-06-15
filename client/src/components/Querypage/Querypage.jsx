@@ -1,23 +1,18 @@
-// File: src/pages/Querypage/Querypage.jsx (or StudentQueryApp.js)
-
-import React, { useState, useRef, useEffect } from 'react';
-// REMOVE: import axios from 'axios';
-import apiClient from '../../api/axiosConfig'; // IMPORT THE NEW API CLIENT
-import { Send, RefreshCw } from 'lucide-react';
-import './Querypage.css';
+import { jwtDecode } from 'jwt-decode';
+import { RefreshCw, Send } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import apiClient from '../../api/axiosConfig';
 import src from '../../assets/image.png';
 import Sidebar from '../Sidebar/Sidebar';
-import { jwtDecode } from 'jwt-decode';
+
+// NOTE: Remember to remove the import for "./Querypage.css"
 
 function StudentQueryApp() {
   const [user, setUser] = useState(null);
-  // REMOVE: const [token, setToken] = useState(null); // No longer needed here
   const [query, setQuery] = useState('');
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [sidebarExpanded, setSidebarExpanded] = useState(true);
-  const [firstPrompt, setFirstPrompt] = useState(true);
-
+  
   const [chatHistoryList, setChatHistoryList] = useState([]);
   const [currentConversationId, setCurrentConversationId] = useState(null);
 
@@ -29,8 +24,6 @@ function StudentQueryApp() {
       try {
         const decoded = jwtDecode(storedToken);
         setUser(decoded);
-        // The token is now handled by the axios interceptor,
-        // so we just need to trigger the fetch.
         fetchConversationsList();
       } catch (error) {
         console.error('Invalid token:', error);
@@ -45,7 +38,6 @@ function StudentQueryApp() {
 
   const fetchConversationsList = async () => {
     try {
-      // No need to pass headers manually!
       const response = await apiClient.get("/conversations");
       setChatHistoryList(response.data || []);
     } catch (error) {
@@ -58,11 +50,9 @@ function StudentQueryApp() {
     setLoading(true);
     setMessages([]);
     try {
-      // No need to pass headers manually!
       const response = await apiClient.get(`/conversation/${conversationId}`);
       setMessages(response.data);
       setCurrentConversationId(conversationId);
-      setFirstPrompt(false);
     } catch (error) {
       console.error("Error fetching conversation:", error);
       setMessages([{ type: 'error', content: 'Failed to load this chat.' }]);
@@ -74,7 +64,6 @@ function StudentQueryApp() {
   const handleNewChat = () => {
     setMessages([]);
     setCurrentConversationId(null);
-    setFirstPrompt(true);
     setQuery('');
   };
 
@@ -82,7 +71,6 @@ function StudentQueryApp() {
     e.preventDefault();
     if (!query.trim() || loading) return;
 
-    // The interceptor checks for the token automatically
     if (!localStorage.getItem('authToken')) {
       setMessages((prev) => [...prev, { type: 'error', content: 'Authentication error. Please login again.' }]);
       return;
@@ -92,22 +80,17 @@ function StudentQueryApp() {
     setMessages((prev) => [...prev, newUserMessage]);
     setQuery('');
     setLoading(true);
-    setFirstPrompt(false);
 
     try {
-      // No need to pass headers manually!
-      const response = await apiClient.post(
-        '/query',
-        { query, conversationId: currentConversationId }
-      );
-
+      const response = await apiClient.post('/query', { query, conversationId: currentConversationId });
       const { natural_language_response, newConversation } = response.data;
       const newBotMessage = { type: 'bot', content: natural_language_response || 'No results found' };
       setMessages((prev) => [...prev, newBotMessage]);
 
       if (newConversation && newConversation.id) {
         setCurrentConversationId(newConversation.id);
-        setChatHistoryList((prev) => [newConversation, ...prev]);
+        // Add new chat to the top of the history list
+        setChatHistoryList((prev) => [newConversation, ...prev.filter(c => c.id !== newConversation.id)]);
       }
 
     } catch (err) {
@@ -118,132 +101,108 @@ function StudentQueryApp() {
     }
   };
 
-  // ... (rest of your component, including parseContent, return statement, etc. remains the same)
-const extractImageUrls = (text) => {
+  // Helper functions to parse response content
+  const extractImageUrls = (text) => {
     const regex = /(https?:\/\/[^\s]+(\.jpg|\.jpeg|\.png|\.gif))/g;
-    const matches = [];
-    let match;
-    while ((match = regex.exec(text)) !== null) {
-      matches.push(match[0]);
-    }
-    return matches;
+    return text.match(regex) || [];
   };
 
   const parseContent = (content) => {
-    const lines = content.split('\n');
+    // This function can be further improved based on expected response formats
+    // For now, it handles simple text and image URLs found in the text.
+    const lines = content.split('\n').filter(line => line.trim() !== '');
     const elements = [];
-    let i = 0;
-    while (i < lines.length) {
-      const line = lines[i];
-      const studentMatch = line.match(/^([A-Z\s]+)$/);
-      if (studentMatch && i + 1 < lines.length) {
-        const nextLine = lines[i + 1];
-        const imageUrls = extractImageUrls(nextLine);
-        if (imageUrls.length > 0) {
-          elements.push({
-            type: 'student-info',
-            name: studentMatch[1],
-            imageUrl: imageUrls[0],
-          });
-          i += 2;
-          continue;
+    lines.forEach(line => {
+        const imageUrls = extractImageUrls(line);
+        if(imageUrls.length > 0) {
+            imageUrls.forEach(url => elements.push({ type: 'image', url: url }));
+            const textPart = line.replace(imageUrls.join(' '), '').trim();
+            if(textPart) elements.push({type: 'text', content: textPart});
+        } else {
+            elements.push({ type: 'text', content: line });
         }
-      }
-      const imageUrls = extractImageUrls(line);
-      if (imageUrls.length > 0) {
-        let remainingText = line;
-        const lineParts = [];
-        imageUrls.forEach((url) => {
-          const index = remainingText.indexOf(url);
-          if (index !== -1) {
-            const textBefore = remainingText.substring(0, index);
-            if (textBefore.trim() !== '') {
-              lineParts.push({ type: 'text', content: textBefore });
-            }
-            lineParts.push({ type: 'image', url });
-            remainingText = remainingText.substring(index + url.length);
-          }
-        });
-        if (remainingText.trim() !== '') {
-          lineParts.push({ type: 'text', content: remainingText });
-        }
-        lineParts.forEach((part) => elements.push(part));
-      } else {
-        if (line.trim() !== '') {
-          elements.push({ type: 'text', content: line });
-        }
-      }
-      i++;
-    }
+    });
     return elements;
   };
 
   return (
-    <div className="app-container">
+    <div className="flex h-screen w-full bg-gray-800 text-gray-100">
       <Sidebar 
-        onToggle={setSidebarExpanded} 
         history={chatHistoryList}
         onSelectHistory={handleSelectConversation}
         onNewChat={handleNewChat}
         activeConversationId={currentConversationId}
       />
       
-      <div className={`chat-gpt-container ${sidebarExpanded ? 'sidebar-expanded' : 'sidebar-collapsed'}`}>
-        {/* ... The rest of your JSX remains the same ... */}
-        {/* Chat Header */}
-        <div className="chat-header">
-          <img src={src} className="chat-logo" alt="Logo" />
-          <h1>BIT Chatbot</h1>
-        </div>
-        {/* Chat Messages */}
-                <div className="chat-messages">
-          {messages.map((msg, index) => (
-            <div key={index} className={`message ${msg.type}`}>
-              <div className="message-content">
-                {msg.type === 'user' && <p className="user-message">{msg.content}</p>}
-                {msg.type === 'bot' && (
-                  <>
-                    {parseContent(msg.content).map((element, idx) => {
-                      if (element.type === 'student-info') {
-                        return (
-                          <div key={idx} className="student-info">
-                            <p className="student-name">{element.name}</p>
-                            <img src={element.imageUrl} alt={element.name} className="student-image" />
-                          </div>
-                        );
-                      } else if (element.type === 'image') {
-                        return <img key={idx} src={element.url} alt="Result" className="content-image" />;
-                      } else if (element.type === 'text') {
-                        return <p key={idx} className="bot-message-text">{element.content}</p>;
-                      }
-                      return null;
-                    })}
-                  </>
-                )}
-                {msg.type === 'error' && <p className="error-message">{msg.content}</p>}
-              </div>
+      <div className="flex flex-grow flex-col">
+        {/* Main Chat Area */}
+        <main className="flex-grow overflow-y-auto p-4 md:p-6">
+          {messages.length === 0 && !loading ? (
+             // Welcome Screen for new chats
+            <div className="flex h-full flex-col items-center justify-center text-center">
+                <img src={src} className="h-16 mb-4" alt="Logo" />
+                <h1 className="text-2xl font-bold">BIT Chatbot</h1>
+                <p className="text-gray-400">Ask a question about the student database to get started.</p>
             </div>
-          ))}
-            {loading && (
-                <div className="message bot loading">
-                    <RefreshCw className="loading-icon" />
+          ) : (
+            // Chat messages
+            <div className="mx-auto w-full max-w-3xl space-y-6">
+              {messages.map((msg, index) => (
+                <div key={index} className={`flex items-start gap-3 ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  {/* Message Bubble */}
+                  <div className={`max-w-xl rounded-lg p-3 lg:max-w-2xl ${
+                      msg.type === 'user' ? 'bg-blue-600 text-white' 
+                      : msg.type === 'bot' ? 'bg-gray-700 text-gray-200' 
+                      : 'border border-red-500/50 bg-red-900/50 text-red-200'
+                  }`}>
+                    {msg.type === 'user' && <p className="whitespace-pre-wrap break-words">{msg.content}</p>}
+                    {msg.type === 'error' && <p className="whitespace-pre-wrap break-words">{msg.content}</p>}
+                    {msg.type === 'bot' && (
+                      <div className="space-y-2">
+                        {parseContent(msg.content).map((element, idx) => {
+                           if (element.type === 'image') {
+                            return <img key={idx} src={element.url} alt="Result" className="max-w-xs rounded-lg" />;
+                          } else if (element.type === 'text') {
+                            return <p key={idx} className="whitespace-pre-wrap break-words">{element.content}</p>;
+                          }
+                          return null;
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
-            )}
-            <div ref={messagesEndRef} />
+              ))}
+              {loading && (
+                  <div className="flex justify-start">
+                      <div className="rounded-lg bg-gray-700 p-4">
+                        <RefreshCw className="h-6 w-6 animate-spin text-gray-300" />
+                      </div>
+                  </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
+        </main>
+        
+        {/* Chat Input Form Area */}
+        <div className="w-full bg-gray-800 p-4 md:p-6">
+            <form onSubmit={handleSubmit} className="relative mx-auto w-full max-w-3xl">
+                <input
+                    type="text"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Enter your database query..."
+                    className="w-full rounded-xl border border-gray-600 bg-gray-700 p-4 pr-14 text-gray-100 placeholder-gray-400 shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button 
+                  type="submit" 
+                  disabled={loading || !query.trim()} 
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg bg-green-500 p-2 text-white transition-colors hover:bg-green-600 disabled:cursor-not-allowed disabled:bg-gray-500"
+                >
+                    <Send size={20} />
+                </button>
+            </form>
         </div>
-        {/* Chat Input Form */}
-        <form onSubmit={handleSubmit} className={`chat-input-form ${firstPrompt ? 'centered' : 'bottom'}`}>
-            <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Enter your database query"
-                className="chat-input"
-            />
-            <button type="submit" disabled={loading} className="chat-submit-btn">
-                <Send size={20} />
-            </button>
-        </form>
       </div>
     </div>
   );

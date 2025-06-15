@@ -1,64 +1,84 @@
-import React, { useState } from "react";
-import { Menu, X, MessageSquarePlus } from "lucide-react";
-import "./Sidebar.css";
+import { Menu, MessageSquarePlus, X } from "lucide-react";
+import { useState } from "react";
 
-const Sidebar = ({ onToggle, history, onSelectHistory, onNewChat, activeConversationId }) => {
-  const [expanded, setExpanded] = useState(true); // Default to expanded on desktop
+// NOTE: Remember to remove the import for "./Sidebar.css"
 
-  const toggleSidebar = () => {
-    const newState = !expanded;
-    setExpanded(newState);
-    onToggle(newState); 
-  };
-  
+const Sidebar = ({ history, onSelectHistory, onNewChat, activeConversationId }) => {
+  // The sidebar is expanded by default. It manages its own state.
+  const [expanded, setExpanded] = useState(true);
+
   const handleNewChatClick = () => {
     onNewChat();
-    // Optional: close sidebar on mobile after clicking new chat
-    if (window.innerWidth < 768 && expanded) {
-      toggleSidebar();
+    // On mobile, collapse the sidebar after starting a new chat for a better view
+    if (window.innerWidth < 768) {
+      setExpanded(false);
     }
-  }
+  };
 
   const handleHistoryClick = (id) => {
     onSelectHistory(id);
-    // Optional: close sidebar on mobile after selecting a chat
-    if (window.innerWidth < 768 && expanded) {
-      toggleSidebar();
+    // On mobile, collapse the sidebar after selecting a chat
+    if (window.innerWidth < 768) {
+      setExpanded(false);
     }
-  }
+  };
 
   return (
-    <div className={`sidebar ${expanded ? "expanded" : "collapsed"}`}>
-      <div className="sidebar-header">
-        <button className="new-chat-btn" onClick={handleNewChatClick}>
-          <MessageSquarePlus size={20} />
-          {expanded && <span>New Chat</span>}
-        </button>
-        <button className="toggle-btn" onClick={toggleSidebar}>
+    // The main sidebar container. Uses flexbox and transitions for width.
+    <div
+      className={`relative flex h-screen flex-col bg-gray-900 text-gray-100 transition-all duration-300 ease-in-out ${
+        expanded ? "w-64" : "w-20"
+      }`}
+    >
+      {/* Sidebar Header */}
+      <div className="flex items-center justify-between border-b border-gray-700 p-4">
+        {/* New Chat Button: Text is hidden when collapsed */}
+        {expanded && (
+          <button
+            className="flex flex-grow items-center gap-3 rounded-md border border-gray-600 p-2 text-sm font-semibold transition-colors hover:bg-gray-800"
+            onClick={handleNewChatClick}
+          >
+            <MessageSquarePlus size={20} />
+            New Chat
+          </button>
+        )}
+        
+        {/* Toggle Button */}
+        <button
+          className="rounded-md p-2 transition-colors hover:bg-gray-800"
+          onClick={() => setExpanded(!expanded)}
+        >
           {expanded ? <X size={20} /> : <Menu size={20} />}
         </button>
       </div>
 
-      {expanded && (
-        <div className="sidebar-history">
-          <p className="history-title">Recent</p>
-          <div className="history-list">
-            {history.map((chat) => (
-              <button
-                key={chat.id}
-                className={`history-item ${activeConversationId === chat.id ? 'active' : ''}`}
-                onClick={() => handleHistoryClick(chat.id)}
-                title={chat.title}
-              >
-                {chat.title}
-              </button>
-            ))}
-          </div>
+      {/* History Section */}
+      <div className="flex-grow overflow-y-auto overflow-x-hidden p-2">
+        {expanded && (
+          <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
+            Recent
+          </p>
+        )}
+        <div className="flex flex-col gap-1">
+          {history.map((chat) => (
+            <button
+              key={chat.id}
+              className={`w-full truncate rounded-md p-2 text-left text-sm transition-colors hover:bg-gray-800 ${
+                activeConversationId === chat.id ? "bg-gray-700" : ""
+              }`}
+              onClick={() => handleHistoryClick(chat.id)}
+              title={chat.title}
+            >
+              <span className={!expanded ? 'sr-only' : ''}>{chat.title}</span>
+            </button>
+          ))}
         </div>
-      )}
+      </div>
 
-      <div className="sidebar-footer">
-        {/* You can add user info or logout button here */}
+      {/* Sidebar Footer (Optional) */}
+      <div className="mt-auto border-t border-gray-700 p-4">
+        {/* You can add user info, settings, or a logout button here */}
+        {expanded && <div className="text-sm text-gray-500">User Info</div>}
       </div>
     </div>
   );

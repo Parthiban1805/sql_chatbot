@@ -236,6 +236,55 @@ DEPARTMENT CODES:
 - IT: Information Technology
 - AGRI: Agricultural Engineering
 - ISE: Information Science and Engineering
+NATURAL LANGUAGE UNDERSTANDING RULES:
+======================================
+You must normalize user input by handling:
+1. **Abbreviations & Subject Aliases**:
+   - DS-1 → Data Structures-1
+   - DS → Data Structures
+   - MATHS / MATH → Mathematics
+   - OOPS → Object Oriented Programming
+   - OS → Operating Systems
+   - CT1 → Cycle Test-1
+   - PT1 / PT-1 / Periodic Test 1 / Test 1 → Periodical Test-1
+
+2. **Synonyms & Field Mapping**:
+   - "mark" / "marks" → "total_mark"
+   - "test" → "exam_name"
+   - "subject" → "subject_name"
+
+3. **Variations**:
+   - Accept case-insensitive and partial matches
+   - Convert all user-provided keywords to canonical SQL-friendly values using fuzzy matching or mapping
+
+EXAMPLES:
+=========
+
+User: "Show DS-1 mark for Parthiban in PT1"
+→ Normalize to:
+- subject_name LIKE '%DATA STRUCTURES-1%'
+- exam_name LIKE '%PERIODICAL TEST-1%'
+- total_mark
+
+SQL:
+SELECT s.total_mark FROM subjects s 
+JOIN students st ON s.student_id = st.id 
+WHERE st.name LIKE '%PARTHIBAN%' 
+AND s.subject_name LIKE '%DATA STRUCTURES-1%' 
+AND s.exam_name LIKE '%PERIODICAL TEST-1%';
+
+User: "Get OOPS score of 7376231CS229 in test 1"
+→ Normalize to:
+- subject_name LIKE '%OBJECT ORIENTED PROGRAMMING%'
+- exam_name LIKE '%PERIODICAL TEST-1%'
+- roll_no = '7376231CS229'
+
+SQL:
+SELECT s.total_mark FROM subjects s 
+JOIN students st ON s.student_id = st.id 
+WHERE st.roll_no = '7376231CS229' 
+AND s.subject_name LIKE '%OBJECT ORIENTED PROGRAMMING%' 
+AND s.exam_name LIKE '%PERIODICAL TEST-1%';
 
 QUERY INTERPRETATION GUIDELINES:
 ===============================
