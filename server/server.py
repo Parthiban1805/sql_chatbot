@@ -79,13 +79,101 @@ def execute_query(query):
         return []
     except Exception as e:
         logging.error(f"Error executing query: {str(e)}")
-        # Rollback in case of error
         if conn:
             conn.rollback()
         return f"Error executing query: {str(e)}"
     finally:
         if conn:
             conn.close()
+
+def get_database_schema():
+    conn = connect_to_db()
+    if not conn:
+        return ""
+    try:
+        cursor = conn.cursor()
+        
+        # 1. Fetch all user tables and columns, excluding system/history tables
+        query = """
+            SELECT table_name, column_name, data_type, character_maximum_length
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name NOT IN ('users', 'chatbot_history')
+            ORDER BY table_name, ordinal_position;
+        """
+        cursor.execute(query)
+        columns = cursor.fetchall()
+        
+        # 2. Fetch primary key columns
+        pk_query = """
+            SELECT tc.table_name, kcu.column_name
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu 
+              ON tc.constraint_name = kcu.constraint_name
+             AND tc.table_schema = kcu.table_schema
+             AND tc.table_name = kcu.table_name
+            WHERE tc.constraint_type = 'PRIMARY KEY'
+              AND tc.table_schema = 'public';
+        """
+        cursor.execute(pk_query)
+        pks = {(row[0], row[1]) for row in cursor.fetchall()}
+        
+        # 3. Fetch foreign key columns and their targets
+        fk_query = """
+            SELECT
+                tc.table_name, 
+                kcu.column_name, 
+                ccu.table_name AS foreign_table_name,
+                ccu.column_name AS foreign_column_name 
+            FROM 
+                information_schema.table_constraints AS tc 
+                JOIN information_schema.key_column_usage AS kcu
+                  ON tc.constraint_name = kcu.constraint_name
+                 AND tc.table_schema = kcu.table_schema
+                 AND tc.table_name = kcu.table_name
+                JOIN information_schema.constraint_column_usage AS ccu
+                  ON ccu.constraint_name = tc.constraint_name
+                 AND ccu.table_schema = tc.table_schema
+            WHERE tc.constraint_type = 'FOREIGN KEY'
+              AND tc.table_schema = 'public';
+        """
+        cursor.execute(fk_query)
+        fks = {}
+        for row in cursor.fetchall():
+            fks[(row[0], row[1])] = (row[2], row[3])
+            
+        # 4. Format schema description
+        schema_dict = {}
+        for table, col, dtype, max_len in columns:
+            if table not in schema_dict:
+                schema_dict[table] = []
+            
+            formatted_type = dtype.upper()
+            if max_len:
+                formatted_type = f"{formatted_type}({max_len})"
+            
+            key_info = ""
+            if (table, col) in pks:
+                key_info = " - Primary Key"
+            elif (table, col) in fks:
+                ref_table, ref_col = fks[(table, col)]
+                key_info = f" - Foreign Key referencing {ref_table}.{ref_col}"
+                
+            schema_dict[table].append(f"   - {col} ({formatted_type}){key_info}")
+            
+        schema_text = "DATABASE SCHEMA:\n==================\n"
+        for idx, (table_name, cols) in enumerate(schema_dict.items(), 1):
+            schema_text += f"{idx}. {table_name} table:\n"
+            schema_text += "\n".join(cols) + "\n\n"
+            
+        cursor.close()
+        conn.close()
+        return schema_text
+    except Exception as e:
+        logging.error(f"Error fetching database schema: {e}")
+        if conn:
+            conn.close()
+        return ""
 
 def generate_natural_language_response(user_query, db_results):
     try:
@@ -201,28 +289,12 @@ def generate_query(current_user): # 'current_user' is now correctly passed from 
         user_query = data.get('query', '')
         conversation_id = data.get('conversationId')
         
+        db_schema = get_database_schema()
+        
         prompt = """
 You are an intelligent SQL chatbot connected to a student database management system. Your primary role is to understand natural language queries and generate accurate SQL commands while providing helpful guidance to users.
 
-DATABASE SCHEMA:
-==================
-1. students table:
-   - id (TEXT) - Primary Key
-   - roll_no (TEXT) - Student roll number
-   - name (TEXT) - Student full name
-   - dept (TEXT) - Department code
-   - mailid (TEXT) - Student email address
-   - sem (TEXT) - Current semester
-   - year (INTEGER) - Academic year
-   - speciallab (TEXT) - Special lab assignment
-
-2. subjects table:
-   - id (INTEGER) - Primary Key, Auto-increment
-   - exam_name (TEXT) - Type of examination
-   - course_code (TEXT) - Subject course code
-   - student_id (TEXT) - Foreign Key referencing students.id
-   - subject_name (TEXT) - Name of the subject
-   - total_mark (INTEGER) - Marks obtained
+[DATABASE_SCHEMA]
 
 DEPARTMENT CODES:
 ================
@@ -448,6 +520,7 @@ ERROR HANDLING:
 - Provide helpful error messages
 
 Remember: Generate only the SQL query without additional formatting or explanations unless specifically requested."""
+        prompt = prompt.replace("[DATABASE_SCHEMA]", db_schema)
         chat_session = start_chat_session()
         response = chat_session.send_message(f"{prompt}\nUser: {user_query}\nSQL:")
         generated_query = response.text.strip("```sql\n").strip().replace('`', '')
